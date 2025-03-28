@@ -11,11 +11,11 @@ import (
 
 type VoteStorage interface {
 	CreateDB() error
-	CreateVote(vote *models.Vote) error
-	GetVote(id string) (*models.Vote, error)
-	UpdateVote(vote *models.Vote) error
+	CreateVote(vote *models.Voting) error
+	GetVote(id string) (*models.Voting, error)
+	UpdateVote(vote *models.Voting) error
 	DeleteVote(id string) error
-	ListActiveVotes() ([]*models.Vote, error)
+	ListActiveVotes() ([]*models.Voting, error)
 	GracefulConnClose()
 }
 
@@ -24,67 +24,54 @@ type TarantoolStorage struct {
 }
 
 func NewTarantoolStorage(dialer tarantool.NetDialer) (*TarantoolStorage, error) {
-
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	opts := tarantool.Opts{
 		Timeout:     5 * time.Second,
 		Concurrency: 32,
 	}
-	conn, err := tarantool.Connect(context.Background(), dialer, opts)
+	conn, err := tarantool.Connect(ctx, dialer, opts)
 	if err != nil {
 		return nil, err
 	}
 	return &TarantoolStorage{conn: conn}, nil
 }
 
-func (s *TarantoolStorage) CreateDB() error {
-	_, err := s.conn.Call("box.schema.space.create", []interface{}{
-		"votes",
-		map[string]bool{"if_not_exists": true}})
+func (s *TarantoolStorage) CreateDB() (tarantool.Response, error) {
+	resp, err := s.conn.Do(tarantool.NewExecuteRequest("box.schema.space.create('voting', {if_not_exists = true})")).GetResponse()
 	if err != nil {
-		return err
+		return resp, err
 	}
-	_, err = s.conn.Call("box.space.votes:format", [][]map[string]string{
-		{
-			{"name": "id", "type": "string"},
-			{"name": "creator_id", "type": "string"},
-			{"name": "question", "type": "string"},
-			{"name": "options", "type": "array"},
-			{"name": "votes", "type": "table"},
-			{"name": "created_at", "type": "integer"},
-			{"name": "is_active", "type": "boolean"},
-			{"name": "expires_at", "type": "integer"},
-		}})
+	resp, err = s.conn.Do(tarantool.NewExecuteRequest(`
+	box.space.voting:format({
+    {name = 'id', type = 'string'},
+    {name = 'creator_id', type = 'string'},
+    {name = 'question', type = 'string'},
+    {name = 'options', type = 'array'},
+    {name = 'votes', type = 'array'},
+    {name = 'created_at', type = 'integer'},
+    {name = 'is_active', type = 'boolean'},
+    {name = 'expires_at', type = 'integer'},
+})
+	`)).GetResponse()
 	if err != nil {
-		return err
+		return resp, err
 	}
-	_, err = s.conn.Call("box.space.votes:create_index", []interface{}{
-		"primary",
-		map[string]interface{}{
-			"parts":         []string{"id"},
-			"if_not_exists": true}})
+	resp, err = s.conn.Do(tarantool.NewExecuteRequest(
+		`box.space.voting:create_index('primary', {parts = {'id'}, if_not_exists = true})`)).
+		GetResponse()
 	if err != nil {
-		return err
+		return resp, err
 	}
-	return nil
+	return resp, nil
 }
 
-func (s *TarantoolStorage) CreateVote(vote *models.Vote) error {
-	// _, err := s.conn.Insert("votes", []interface{}{
-	// 	vote.ID,
-	// 	vote.CreatorID,
-	// 	vote.Question,
-	// 	vote.Options,
-	// 	vote.Votes,
-	// 	vote.CreatedAt,
-	// 	vote.IsActive,
-	// 	vote.ExpiresAt,
-	// })
-	// return err
+func (s *TarantoolStorage) CreateVote(vote *models.Voting) error {
 	fmt.Println("Create Vote")
 	return nil
 }
 
-func (s *TarantoolStorage) GetVote(id string) (*models.Vote, error) {
+func (s *TarantoolStorage) GetVote(id string) (*models.Voting, error) {
 	// resp, err := s.conn.Select("votes", "primary", 0, 1, tarantool.IterEq, []interface{}{id})
 	// if err != nil {
 	// 	return nil, err
@@ -98,7 +85,7 @@ func (s *TarantoolStorage) GetVote(id string) (*models.Vote, error) {
 	return nil, nil
 }
 
-func (s *TarantoolStorage) UpdateVote(vote *models.Vote) error {
+func (s *TarantoolStorage) UpdateVote(vote *models.Voting) error {
 	fmt.Println("UpdateVote Vote")
 	return nil
 }
@@ -108,7 +95,7 @@ func (s *TarantoolStorage) DeleteVote(id string) error {
 	return nil
 }
 
-func (s *TarantoolStorage) ListActiveVotes() ([]*models.Vote, error) {
+func (s *TarantoolStorage) ListActiveVotes() ([]*models.Voting, error) {
 	fmt.Println("ListActiveVotes Vote")
 	return nil, nil
 }

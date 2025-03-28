@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:13
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mattermost
+      POSTGRES_PASSWORD: ${PASS}
+      POSTGRES_DB: mattermost
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - mynetwork
+  app:
+    image: mattermost/mattermost-team-edition:latest
+    restart: unless-stopped
+    environment:
+      MM_SQLSETTINGS_DRIVERNAME: postgres
+      MM_SQLSETTINGS_DATASOURCE: postgresql://mattermost:${PASS}@db:5432/mattermost?sslmode=disable
+      MM_SERVICESETTINGS_SITEURL: http://localhost:8065
+    volumes:
+      - app_data:/mattermost/data
+    ports:
+      - "8065:8065"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8065/api/v4/system/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - db
+    networks:
+      - mynetwork
+  tarantool:
+    image: tarantool/tarantool:2.8
+    ports:
+      - "3301:3301"
+    environment:
+      TARANTOOL_USER_NAME: ${TARANTOOL_USER}
+      TARANTOOL_USER_PASSWORD: ${TARANTOOL_PASS}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3301"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mynetwork
+  # bot:
+  #   restart: always
+  #   build: "./bot"
+  #   environment:
+  #     BOT_ID: ${BOT_ID}
+  #     MATTERMOST_WS: ${MATTERMOST_WS}
+  #     MATTERMOST_URL: ${MATTERMOST_URL}
+  #     BOT_TOKEN: ${BOT_TOKEN}
+  #     TARANTOOL_ADDR: ${TARANTOOL_ADDR}
+  #     TARANTOOL_USER: ${TARANTOOL_USER}
+  #     TARANTOOL_PASS: ${TARANTOOL_PASS}
+  #   depends_on:
+  #     - app
+  #     - tarantool
+  #   networks:
+  #     - mynetwork
+
+      
+volumes:
+  db_data:
+  app_data:
+
+networks:
+  mynetwork:
+    driver: bridge

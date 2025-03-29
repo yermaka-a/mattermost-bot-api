@@ -5,6 +5,10 @@ import (
 	"bot/internal/config"
 	"bot/internal/logger"
 	"bot/internal/storage"
+	"context"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/mattermost/mattermost-server/v6/model"
 
@@ -12,6 +16,9 @@ import (
 )
 
 func main() {
+	ctx, AppCannel := context.WithCancel(context.Background())
+	defer AppCannel()
+
 	// Загрузка переменных окружения
 	config := config.GetConfig()
 
@@ -31,7 +38,13 @@ func main() {
 	// Создание и запуск бота
 	client := model.NewAPIv4Client(config.MATTERMOST_URL)
 	client.SetOAuthToken(config.BOT_TOKEN)
-	app.Start(client, storage, config, log)
+	app.Start(ctx, client, storage, config, log)
 	log.Infow("Бот успешно запущен", "url", config.MATTERMOST_URL)
-
+	// GracefullShutdown
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
+	<-stop
+	AppCannel()
+	storage.GracefulConnClose()
+	log.Infoln("Received shutdown signal")
 }

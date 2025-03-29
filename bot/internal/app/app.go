@@ -5,11 +5,13 @@ import (
 	"bot/internal/logger"
 	"bot/internal/models"
 	"bot/internal/storage"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -44,17 +46,19 @@ type Bot struct {
 
 const (
 	CREATE_VOTE = "/create"
-	VOTE        = "/id "
-	RESULTS     = "/results "
-	FINISHED    = "/finished "
-	DELETE      = "/delete "
+	VOTE        = "/vote"
+	RESULTS     = "/results"
+	FINISHED    = "/finished"
+	DELETE      = "/delete"
 )
 
-func Start(client *model.Client4, storage *storage.TarantoolStorage, cfg *config.BotConfig, log *logger.Logger) {
-	_, err := storage.CreateDB()
+func Start(ctx context.Context, client *model.Client4, storage *storage.TarantoolStorage, cfg *config.BotConfig, log *logger.Logger) {
+
+	resp, err := storage.CreateDB()
 	if err != nil {
 		log.Fatalln("Can't create database", err)
 	}
+	log.Infoln(resp)
 	routes = MattermostRoutes{
 		me: "/users/me",
 	}
@@ -75,56 +79,58 @@ func Start(client *model.Client4, storage *storage.TarantoolStorage, cfg *config
 		log.Fatalln("ws connection error", err)
 	}
 	wsClient.Listen()
-	defer wsClient.Conn.Close()
-	for {
-		select {
-		case event := <-wsClient.EventChannel:
-			if event.EventType() == model.WebsocketEventPosted {
+	go func() {
+	LOOP:
+		for {
+			select {
+			case event := <-wsClient.EventChannel:
+				if event.EventType() == model.WebsocketEventPosted {
 
-				postStr, ok := event.GetData()["post"].(string)
-				fmt.Println(event.GetData())
-				if ok {
-					var post map[string]interface{}
-					json.Unmarshal([]byte(postStr), &post)
-					msg := Message{
-						Id:        post["id"].(string),
-						UserId:    post["user_id"].(string),
-						ChannelId: post["channel_id"].(string),
-						Message:   post["message"].(string),
-					}
-					//client.CreatePost(&model.Post{RootId: msg.Id, ChannelId: msg.ChannelId, Message: message})
-					if bot.ID != msg.UserId {
-						typeMsg, message := getCommand(msg.Message)
-						msg.Message = message
-						switch typeMsg {
-						case CREATE_VOTE:
-							fmt.Println("CREATE_VOTE")
-							app.CreateVote(msg)
+					postStr, ok := event.GetData()["post"].(string)
+					fmt.Println(event.GetData())
+					if ok {
+						var post map[string]interface{}
+						json.Unmarshal([]byte(postStr), &post)
+						msg := Message{
+							Id:        post["id"].(string),
+							UserId:    post["user_id"].(string),
+							ChannelId: post["channel_id"].(string),
+							Message:   post["message"].(string),
+						}
+						//client.CreatePost(&model.Post{RootId: msg.Id, ChannelId: msg.ChannelId, Message: message})
+						if bot.ID != msg.UserId {
+							typeMsg, message := getCommand(msg.Message)
+							msg.Message = message
+							switch typeMsg {
+							case CREATE_VOTE:
+								fmt.Println("CREATE_VOTE")
+								app.CreateVote(msg)
 
-						case VOTE:
-							fmt.Println("VOTE")
-							app.ToVote(msg)
+							case VOTE:
+								fmt.Println("VOTE")
+								app.ToVote(msg)
 
-						case RESULTS:
-							fmt.Println("RESULTS")
-							app.GetVoteResults(msg)
+							case RESULTS:
+								fmt.Println("RESULTS")
+								app.GetVoteResults(msg)
 
-						case FINISHED:
-							fmt.Println("FINISHED")
-							app.FinishingVote(msg)
+							case FINISHED:
+								fmt.Println("FINISHED")
+								app.FinishingVote(msg)
 
-						case DELETE:
-							fmt.Println("DELETE")
-							app.DeletingVote(msg)
+							case DELETE:
+								fmt.Println("DELETE")
+								app.DeletingVote(msg)
 
+							}
 						}
 					}
 				}
+			case <-ctx.Done():
+				break LOOP
 			}
-		default:
-			time.Sleep(1 * time.Second)
 		}
-	}
+	}()
 
 }
 
@@ -168,9 +174,9 @@ func (a *App) CreateVote(msg Message) {
 			Question:  question,
 			Options:   options,
 			Votes:     make([]int64, len(options)),
-			CreatedAt: time.Now(),
+			CreatedAt: time.Now().Unix(),
 			IsActive:  true,
-			ExpiresAt: time.Now().Add(time.Hour * 24),
+			ExpiresAt: time.Now().Add(time.Hour * 24).Unix(),
 		}
 		err := a.storage.CreateVote(voting)
 		if err != nil {
@@ -184,11 +190,10 @@ func (a *App) CreateVote(msg Message) {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
 			RootId:    msg.Id,
-			Message: fmt.Sprintf("Ваше голосование успешно создано!\nID голосования:%s\nТип вопроса:%s\nВарианты ответов:\n%s\n\nГолоса:\n%s",
+			Message: fmt.Sprintf("Ваше голосование успешно создано!\nID голосования:%s\nТип вопроса:%s\nВарианты ответов:\n%s",
 				voting.ID,
 				voting.Question,
 				concateOptions(voting.Options),
-				concateVotes(voting.Votes),
 			)})
 	} else {
 		a.client.CreatePost(&model.Post{
@@ -233,11 +238,94 @@ func parseQuestionAndOptions(msg string) (string, []string) {
 }
 
 func (a *App) ToVote(msg Message) {
+	parts := parseVote(msg.Message)
+	//Get voting by ID
+	voting, err := a.storage.GetVote(parts[0])
+	if err != nil {
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   "Такого голосования не нашлось."})
+		return
+	}
+	votes, err := updateVote(voting.Votes, parts[1])
+	if err != nil {
+		a.log.Info(voting.ID, voting.CreatorID, err)
+	}
+	voting.Votes = votes
+	err = a.storage.UpdateVote(voting)
+	if err != nil {
+		a.log.Errorln(err)
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   "Что-то пошло не так..."})
+		return
+	}
+	a.client.CreatePost(&model.Post{
+		ChannelId: msg.ChannelId,
+		RootId:    msg.Id,
+		Message:   fmt.Sprintf("Ваш голос учтён!\nГолосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+}
 
+func updateVote(votes []int64, vote string) ([]int64, error) {
+	number, err := strconv.Atoi(vote)
+	if err != nil {
+		return nil, err
+	}
+	for i := range votes {
+		if i+1 == number {
+			votes[i] += 1
+			return votes, nil
+		}
+	}
+	return nil, fmt.Errorf("Such vote isnt found")
+}
+
+func parseVote(msg string) []string {
+	parts := strings.Split(msg, " ")
+
+	if len(parts) != 2 {
+		return nil
+	}
+
+	id := parts[0]
+	if !isValidID(id) {
+		return nil
+	}
+	return parts
+}
+
+func isValidID(id string) bool {
+
+	re := regexp.MustCompile("^[a-zA-Z0-9]{20,30}$")
+	return re.MatchString(id)
 }
 
 func (a *App) GetVoteResults(msg Message) {
 
+	isVoteId := isValidID(msg.Message)
+	//Get voting by ID
+	if isVoteId {
+		voting, err := a.storage.GetVote(msg.Message)
+		if err != nil {
+			a.log.Infoln("voting not found", err)
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   "Такого голосования не нашлось."})
+			return
+		}
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   fmt.Sprintf("Голосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+	} else {
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   "Некорректный ID опроса"})
+	}
 }
 
 func (a *App) DeletingVote(msg Message) {
@@ -245,9 +333,5 @@ func (a *App) DeletingVote(msg Message) {
 }
 
 func (a *App) FinishingVote(msg Message) {
-
-}
-
-func (a *App) GracefulConsClose() {
 
 }

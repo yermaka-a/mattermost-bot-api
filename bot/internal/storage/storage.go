@@ -37,57 +37,93 @@ func NewTarantoolStorage(dialer tarantool.NetDialer) (*TarantoolStorage, error) 
 	return &TarantoolStorage{conn: conn}, nil
 }
 
-func (s *TarantoolStorage) CreateDB() (tarantool.Response, error) {
-	resp, err := s.conn.Do(tarantool.NewExecuteRequest("box.schema.space.create('voting', {if_not_exists = true})")).GetResponse()
+func (s *TarantoolStorage) CreateDB() ([]interface{}, error) {
+
+	// Создание спейса
+	resp, err := s.conn.Do(tarantool.NewEvalRequest(`
+        box.schema.space.create('voting', {if_not_exists = true})
+    `)).Get()
 	if err != nil {
 		return resp, err
 	}
-	resp, err = s.conn.Do(tarantool.NewExecuteRequest(`
-	box.space.voting:format({
-    {name = 'id', type = 'string'},
-    {name = 'creator_id', type = 'string'},
-    {name = 'question', type = 'string'},
-    {name = 'options', type = 'array'},
-    {name = 'votes', type = 'array'},
-    {name = 'created_at', type = 'integer'},
-    {name = 'is_active', type = 'boolean'},
-    {name = 'expires_at', type = 'integer'},
-})
-	`)).GetResponse()
+
+	// Установка формата
+	resp, err = s.conn.Do(tarantool.NewEvalRequest(`
+        box.space.voting:format({
+            {name = 'id', type = 'string'},
+            {name = 'creator_id', type = 'string'},
+            {name = 'question', type = 'string'},
+            {name = 'options', type = 'array'},
+            {name = 'votes', type = 'array'},
+            {name = 'created_at', type = 'integer'},
+            {name = 'is_active', type = 'boolean'},
+            {name = 'expires_at', type = 'integer'}
+        })
+    `)).Get()
 	if err != nil {
 		return resp, err
 	}
-	resp, err = s.conn.Do(tarantool.NewExecuteRequest(
-		`box.space.voting:create_index('primary', {parts = {'id'}, if_not_exists = true})`)).
-		GetResponse()
+
+	// Создание индекса
+	resp, err = s.conn.Do(tarantool.NewEvalRequest(`
+        box.space.voting:create_index('primary', {
+            parts = {{field = 'id', type = 'string'}},
+            if_not_exists = true
+        })
+    `)).Get()
 	if err != nil {
 		return resp, err
 	}
+
 	return resp, nil
 }
 
-func (s *TarantoolStorage) CreateVote(vote *models.Voting) error {
-	fmt.Println("Create Vote")
+func (s *TarantoolStorage) CreateVote(voting *models.Voting) error {
+	values := []interface{}{
+		voting.ID,
+		voting.CreatorID,
+		voting.Question,
+		voting.Options,
+		voting.Votes,
+		voting.CreatedAt,
+		voting.IsActive,
+		voting.ExpiresAt,
+	}
+	_, err := s.conn.Do(tarantool.NewInsertRequest("voting").Tuple(values)).Get()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *TarantoolStorage) GetVote(id string) (*models.Voting, error) {
-	// resp, err := s.conn.Select("votes", "primary", 0, 1, tarantool.IterEq, []interface{}{id})
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if len(resp.Data) == 0 {
-	// 	return nil, nil
-	// }
+	var result []models.Voting
+	err := s.conn.Do(tarantool.NewEvalRequest(`
+	return box.space.voting:get(...)
+`).Args([]interface{}{id})).GetTyped(&result)
+	if err != nil {
+		return nil, err
+	}
 
-	// vote := &models.Vote{}
-	fmt.Println("Get Vote")
-	return nil, nil
+	if len(result) == 0 {
+		return nil, fmt.Errorf("voting not found")
+	}
+
+	return &result[0], nil
 }
 
-func (s *TarantoolStorage) UpdateVote(vote *models.Voting) error {
-	fmt.Println("UpdateVote Vote")
-	return nil
+func (s *TarantoolStorage) UpdateVote(voting *models.Voting) error {
+	_, err := s.conn.Do(tarantool.NewCallRequest("box.space.voting:update").
+		Args([]interface{}{
+			voting.ID,
+			[][]interface{}{
+				{"=", 5, voting.Votes},
+			},
+		})).
+		Get()
+
+	return err
+
 }
 
 func (s *TarantoolStorage) DeleteVote(id string) error {
@@ -102,5 +138,5 @@ func (s *TarantoolStorage) ListActiveVotes() ([]*models.Voting, error) {
 
 func (s *TarantoolStorage) GracefulConnClose() {
 	fmt.Println("GracefulConnClose Vote")
-	defer s.conn.CloseGraceful()
+	s.conn.CloseGraceful()
 }

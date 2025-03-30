@@ -76,7 +76,6 @@ services:
 volumes:
   db_data:
   app_data:
-  grafana-data:
 networks:
   mynetwork:
     driver: bridge

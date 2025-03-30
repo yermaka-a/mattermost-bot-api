@@ -44,22 +44,23 @@ services:
       retries: 3
     networks:
       - mynetwork
-  # bot:
-  #   restart: always
-  #   build: "./bot"
-  #   environment:
-  #     BOT_ID: ${BOT_ID}
-  #     MATTERMOST_WS: ${MATTERMOST_WS}
-  #     MATTERMOST_URL: ${MATTERMOST_URL}
-  #     BOT_TOKEN: ${BOT_TOKEN}
-  #     TARANTOOL_ADDR: ${TARANTOOL_ADDR}
-  #     TARANTOOL_USER: ${TARANTOOL_USER}
-  #     TARANTOOL_PASS: ${TARANTOOL_PASS}
-  #   depends_on:
-  #     - app
-  #     - tarantool
-  #   networks:
-  #     - mynetwork
+  bot:
+    restart: always
+    build: "./bot"
+    environment:
+      BOT_ID: ${BOT_ID}
+      MATTERMOST_WS: ${MATTERMOST_WS}
+      MATTERMOST_URL: ${MATTERMOST_URL}
+      BOT_TOKEN: ${BOT_TOKEN}
+      TARANTOOL_ADDR: ${TARANTOOL_ADDR}
+      TARANTOOL_USER: ${TARANTOOL_USER}
+      TARANTOOL_PASS: ${TARANTOOL_PASS}
+    depends_on:
+      - tarantool
+      - app
+      - db
+    networks:
+      - mynetwork
   tarantool-admin:
     image: quay.io/basis-company/tarantool-admin
     ports:

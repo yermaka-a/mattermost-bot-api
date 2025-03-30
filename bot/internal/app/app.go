@@ -84,7 +84,6 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 		for {
 			select {
 			case event := <-wsClient.EventChannel:
-				fmt.Println(event.GetData())
 				if event.EventType() == model.WebsocketEventPosted {
 
 					postStr, ok := event.GetData()["post"].(string)

@@ -210,6 +210,5 @@ func (s *TarantoolStorage) GetUserById(userId string) (*models.User, error) {
 }
 
 func (s *TarantoolStorage) GracefulConnClose() {
-	fmt.Println("GracefulConnClose Vote")
 	s.conn.CloseGraceful()
 }

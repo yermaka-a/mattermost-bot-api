@@ -98,7 +98,6 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 							// Удаляем лишние пробелы из строки
 							Message: strings.Join(strings.Fields(strings.TrimSpace(post["message"].(string))), " "),
 						}
-
 						if bot.ID != msg.UserId {
 							typeMsg, message := getCommand(msg.Message)
 							msg.Message = message
@@ -217,8 +216,7 @@ func (a *App) CreateVote(msg Message) {
 
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: "Опрос не был создан, возможно данные введены некорректно..."})
+			Message:   "Опрос не был создан, возможно данные введены некорректно..."})
 	}
 }
 
@@ -263,16 +261,14 @@ func (a *App) ToVote(msg Message) {
 	if parts == nil {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: "Некорректный запрос"})
+			Message:   "Некорректный запрос"})
 		return
 	}
 	voting, err := a.storage.GetVote(parts[0])
 	if err != nil {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: "Такого голосования не нашлось."})
+			Message:   "Такого голосования не нашлось."})
 		return
 	}
 	if voting.IsActive {
@@ -288,7 +284,6 @@ func (a *App) ToVote(msg Message) {
 			}
 			if user == nil {
 				user = &models.User{
-
 					Votes: map[string]int64{},
 				}
 				a.storage.CreateUser(user)
@@ -297,13 +292,17 @@ func (a *App) ToVote(msg Message) {
 			votes, err := updateVote(voting.Votes, parts[1])
 			if err != nil {
 				a.log.Info(voting.ID, voting.CreatorID, err)
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					Message:   "Вариант ответа некорректный!"})
+				return
+
 			}
 			option, err := strconv.Atoi(parts[1])
 			if err != nil {
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
-
-					Message: "Что-то пошло не так..."})
+					Message:   "Что-то пошло не так..."})
 				return
 			}
 			// проголосовал ли пользователь уже в этом опросе
@@ -318,8 +317,7 @@ func (a *App) ToVote(msg Message) {
 			if err != nil {
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
-
-					Message: "Что-то пошло не так..."})
+					Message:   "Что-то пошло не так..."})
 				return
 			}
 			err = a.storage.UpdateVote(voting)
@@ -327,15 +325,13 @@ func (a *App) ToVote(msg Message) {
 				a.log.Errorln(err)
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
-
-					Message: "Что-то пошло не так..."})
+					Message:   "Что-то пошло не так..."})
 				return
 			}
 			if isVoted {
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
-
-					Message: fmt.Sprintf("Ваш голос перезаписан!\nГолосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+					Message:   fmt.Sprintf("Ваш голос перезаписан!\nГолосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
 
 			} else {
 				a.client.CreatePost(&model.Post{
@@ -353,15 +349,13 @@ func (a *App) ToVote(msg Message) {
 			}
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: fmt.Sprintf("Время голосования истекло %s", time.Unix(voting.ExpiresAt, 0).Format("2006-01-02 15:04:05"))})
+				Message:   fmt.Sprintf("Время голосования истекло %s", time.Unix(voting.ExpiresAt, 0).Format("2006-01-02 15:04:05"))})
 
 		}
 	} else {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: fmt.Sprintf("Время голосования истекло %s", time.Unix(voting.ExpiresAt, 0).Format("2006-01-02 15:04:05"))})
+			Message:   fmt.Sprintf("Время голосования истекло %s", time.Unix(voting.ExpiresAt, 0).Format("2006-01-02 15:04:05"))})
 
 	}
 
@@ -412,19 +406,16 @@ func (a *App) GetVoteResults(msg Message) {
 			a.log.Infoln("voting not found", err)
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: "Такого голосования не нашлось."})
+				Message:   "Такого голосования не нашлось."})
 			return
 		}
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: fmt.Sprintf("Голосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+			Message:   fmt.Sprintf("Голосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
 	} else {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: "Некорректный ID опроса"})
+			Message:   "Некорректный ID опроса"})
 	}
 }
 
@@ -437,8 +428,7 @@ func (a *App) DeletingVote(msg Message) {
 			a.log.Infoln("voting not found", err)
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: "Такого голосования не нашлось."})
+				Message:   "Такого голосования не нашлось."})
 			return
 		}
 		if voting.CreatorID == msg.UserId {
@@ -447,26 +437,22 @@ func (a *App) DeletingVote(msg Message) {
 				a.log.Errorln("can't delete voting", err)
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
-
-					Message: "При удалении произошла ошибка!"})
+					Message:   "При удалении произошла ошибка!"})
 				return
 			}
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: fmt.Sprintf("Голосование с ID:%s успешно удалено!", voting.ID)})
+				Message:   fmt.Sprintf("Голосование с ID:%s успешно удалено!", voting.ID)})
 		} else {
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: fmt.Sprintf("У вас нет прав на удаление опроса с ID:%s", voting.ID)})
+				Message:   fmt.Sprintf("У вас нет прав на удаление опроса с ID:%s", voting.ID)})
 		}
 
 	} else {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: "Некорректный ID опроса"})
+			Message:   "Некорректный ID опроса"})
 	}
 }
 
@@ -479,15 +465,13 @@ func (a *App) FinishingVote(msg Message) {
 			a.log.Infoln("voting not found", err)
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: "Такого голосования не нашлось."})
+				Message:   "Такого голосования не нашлось."})
 			return
 		}
 		if !voting.IsActive {
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: "Голосование уже завершено!"})
+				Message:   "Голосование уже завершено!"})
 			return
 		}
 
@@ -498,25 +482,21 @@ func (a *App) FinishingVote(msg Message) {
 				a.log.Errorln("can't finished voting", err)
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
-
-					Message: "Произошла ошибка!"})
+					Message:   "Произошла ошибка!"})
 				return
 			}
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: fmt.Sprintf("Голосование с ID:%s завершено досрочно!", voting.ID)})
+				Message:   fmt.Sprintf("Голосование с ID:%s завершено досрочно!", voting.ID)})
 		} else {
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
-
-				Message: "У вас нет прав на завершение этого голосования досрочно."})
+				Message:   "У вас нет прав на завершение этого голосования досрочно."})
 		}
 
 	} else {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
-
-			Message: "Некорректный ID"})
+			Message:   "Некорректный ID"})
 	}
 }

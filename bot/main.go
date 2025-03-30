@@ -16,8 +16,8 @@ import (
 )
 
 func main() {
-	ctx, AppCannel := context.WithCancel(context.Background())
-	defer AppCannel()
+	ctx, AppCancel := context.WithCancel(context.Background())
+	defer AppCancel()
 
 	// Загрузка переменных окружения
 	config := config.GetConfig()
@@ -44,7 +44,7 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
-	AppCannel()
+	AppCancel()
 	storage.GracefulConnClose()
 	log.Infoln("Received shutdown signal")
 }

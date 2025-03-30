@@ -26,8 +26,10 @@ func NewTarantoolStorage(dialer tarantool.NetDialer) (*TarantoolStorage, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	opts := tarantool.Opts{
-		Timeout:     5 * time.Second,
-		Concurrency: 32,
+		Timeout:       5 * time.Second,
+		Reconnect:     time.Duration(time.Second * 5),
+		MaxReconnects: 5,
+		Concurrency:   32,
 	}
 	conn, err := tarantool.Connect(ctx, dialer, opts)
 	if err != nil {

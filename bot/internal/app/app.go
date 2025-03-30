@@ -95,31 +95,27 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 							Id:        post["id"].(string),
 							UserId:    post["user_id"].(string),
 							ChannelId: post["channel_id"].(string),
-							Message:   post["message"].(string),
+							// Удаляем лишние пробелы из строки
+							Message: strings.Join(strings.Fields(strings.TrimSpace(post["message"].(string))), " "),
 						}
-						//client.CreatePost(&model.Post{RootId: msg.Id, ChannelId: msg.ChannelId, Message: message})
+
 						if bot.ID != msg.UserId {
 							typeMsg, message := getCommand(msg.Message)
 							msg.Message = message
 							switch typeMsg {
 							case CREATE_VOTE:
-								fmt.Println("CREATE_VOTE")
 								app.CreateVote(msg)
 
 							case VOTE:
-								fmt.Println("VOTE")
 								app.ToVote(msg)
 
 							case RESULTS:
-								fmt.Println("RESULTS")
 								app.GetVoteResults(msg)
 
 							case FINISHED:
-								fmt.Println("FINISHED")
 								app.FinishingVote(msg)
 
 							case DELETE:
-								fmt.Println("DELETE")
 								app.DeletingVote(msg)
 
 							}
@@ -240,6 +236,13 @@ func parseQuestionAndOptions(msg string) (string, []string) {
 func (a *App) ToVote(msg Message) {
 	parts := parseVote(msg.Message)
 	//Get voting by ID
+	if parts == nil {
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   "Некорректный запрос"})
+		return
+	}
 	voting, err := a.storage.GetVote(parts[0])
 	if err != nil {
 		a.client.CreatePost(&model.Post{
@@ -248,24 +251,97 @@ func (a *App) ToVote(msg Message) {
 			Message:   "Такого голосования не нашлось."})
 		return
 	}
-	votes, err := updateVote(voting.Votes, parts[1])
-	if err != nil {
-		a.log.Info(voting.ID, voting.CreatorID, err)
-	}
-	voting.Votes = votes
-	err = a.storage.UpdateVote(voting)
-	if err != nil {
-		a.log.Errorln(err)
+	if voting.IsActive {
+		now := time.Now()
+		if now.Before(time.Unix(voting.ExpiresAt, 0)) {
+			user, err := a.storage.GetUserById(msg.UserId)
+			if err != nil {
+				a.log.Errorln(err)
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   "Что-то пошло не так..."})
+				return
+			}
+			if user == nil {
+				user = &models.User{
+					UserId: msg.UserId,
+					Votes:  map[string]int64{},
+				}
+				a.storage.CreateUser(user)
+			}
+
+			votes, err := updateVote(voting.Votes, parts[1])
+			if err != nil {
+				a.log.Info(voting.ID, voting.CreatorID, err)
+			}
+			option, err := strconv.Atoi(parts[1])
+			if err != nil {
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   "Что-то пошло не так..."})
+				return
+			}
+			// проголосовал ли пользователь уже в этом опросе
+			isVoted := false
+			if user.Votes[parts[0]] != 0 {
+				votes[user.Votes[parts[0]]-1] = votes[user.Votes[parts[0]]-1] - 1
+				isVoted = true
+			}
+			user.Votes[parts[0]] = int64(option)
+			voting.Votes = votes
+			err = a.storage.UpdateUser(user)
+			if err != nil {
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   "Что-то пошло не так..."})
+				return
+			}
+			err = a.storage.UpdateVote(voting)
+			if err != nil {
+				a.log.Errorln(err)
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   "Что-то пошло не так..."})
+				return
+			}
+			if isVoted {
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   fmt.Sprintf("Ваш голос перезаписан!\nГолосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+
+			} else {
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   fmt.Sprintf("Ваш голос учтён!\nГолосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+			}
+		} else {
+			if voting.IsActive {
+				voting.IsActive = false
+			}
+			err := a.storage.UpdateVote(voting)
+			if err != nil {
+				a.log.Errorln("func ToVote", "can't update vote", err)
+			}
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   fmt.Sprintf("Время голосования истекло %s", time.Unix(voting.ExpiresAt, 0).Format("2006-01-02 15:04:05"))})
+
+		}
+	} else {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
 			RootId:    msg.Id,
-			Message:   "Что-то пошло не так..."})
-		return
+			Message:   fmt.Sprintf("Время голосования истекло %s", time.Unix(voting.ExpiresAt, 0).Format("2006-01-02 15:04:05"))})
+
 	}
-	a.client.CreatePost(&model.Post{
-		ChannelId: msg.ChannelId,
-		RootId:    msg.Id,
-		Message:   fmt.Sprintf("Ваш голос учтён!\nГолосование:%s\nВопрос:%s\nВарианты:\n%s\nГолоса:\n%s", voting.ID, voting.Question, concateOptions(voting.Options), concateVotes(voting.Votes))})
+
 }
 
 func updateVote(votes []int64, vote string) ([]int64, error) {
@@ -279,9 +355,10 @@ func updateVote(votes []int64, vote string) ([]int64, error) {
 			return votes, nil
 		}
 	}
-	return nil, fmt.Errorf("Such vote isnt found")
+	return nil, fmt.Errorf("such vote isnt found")
 }
 
+// Получаем id = parts[0] номер варианта для голосования num = parts[1]
 func parseVote(msg string) []string {
 	parts := strings.Split(msg, " ")
 
@@ -329,9 +406,94 @@ func (a *App) GetVoteResults(msg Message) {
 }
 
 func (a *App) DeletingVote(msg Message) {
+	isVoteId := isValidID(msg.Message)
+	//Get voting by ID
+	if isVoteId {
+		voting, err := a.storage.GetVote(msg.Message)
+		if err != nil {
+			a.log.Infoln("voting not found", err)
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   "Такого голосования не нашлось."})
+			return
+		}
+		if voting.CreatorID == msg.UserId {
+			err := a.storage.DeleteVote(voting.ID)
+			if err != nil {
+				a.log.Errorln("can't delete voting", err)
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   "При удалении произошла ошибка!"})
+				return
+			}
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   fmt.Sprintf("Голосование с ID:%s успешно удалено!", voting.ID)})
+		} else {
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   fmt.Sprintf("У вас нет прав на удаление опроса с ID:%s", voting.ID)})
+		}
 
+	} else {
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   "Некорректный ID опроса"})
+	}
 }
 
 func (a *App) FinishingVote(msg Message) {
+	isVoteId := isValidID(msg.Message)
+	//Get voting by ID
+	if isVoteId {
+		voting, err := a.storage.GetVote(msg.Message)
+		if err != nil {
+			a.log.Infoln("voting not found", err)
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   "Такого голосования не нашлось."})
+			return
+		}
+		if !voting.IsActive {
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   "Голосование уже завершено!"})
+			return
+		}
 
+		if voting.CreatorID == msg.UserId {
+			voting.IsActive = false
+			err := a.storage.UpdateVote(voting)
+			if err != nil {
+				a.log.Errorln("can't finished voting", err)
+				a.client.CreatePost(&model.Post{
+					ChannelId: msg.ChannelId,
+					RootId:    msg.Id,
+					Message:   "Произошла ошибка!"})
+				return
+			}
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   fmt.Sprintf("Голосование с ID:%s завершено досрочно!", voting.ID)})
+		} else {
+			a.client.CreatePost(&model.Post{
+				ChannelId: msg.ChannelId,
+				RootId:    msg.Id,
+				Message:   "У вас нет прав на завершение этого голосования досрочно."})
+		}
+
+	} else {
+		a.client.CreatePost(&model.Post{
+			ChannelId: msg.ChannelId,
+			RootId:    msg.Id,
+			Message:   "Некорректный ID"})
+	}
 }

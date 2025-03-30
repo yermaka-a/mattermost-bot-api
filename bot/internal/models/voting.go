@@ -9,10 +9,4 @@ type Voting struct {
 	CreatedAt int64    `msgpack:"created_at"`
 	IsActive  bool     `msgpack:"is_active"`
 	ExpiresAt int64    `msgpack:"expires_at,omitempty"`
-	// WhoVoted  []string `msgpack:"who_voted"`
-}
-
-type VoteResult struct {
-	Option    string `json:"option"`
-	VoteCount int    `json:"vote_count"`
 }

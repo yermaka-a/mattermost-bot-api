@@ -19,12 +19,12 @@ type BotConfig struct {
 func GetConfig() *BotConfig {
 	if config == nil {
 		config = &BotConfig{
-			MATTERMOST_URL: getEnv("MATTERMOST_URL", "http://localhost:8065"),
-			BOT_TOKEN:      getEnv("BOT_TOKEN", "z8yxbmc5tbbbtk9k4j4j3jghxw"),
-			TARANTOOL_ADDR: getEnv("TARANTOOL_ADDR", "localhost:3301"),
-			MATTERMOST_WS:  getEnv("MATTERMOST_WS", "ws://localhost:8065"),
-			TARANTOOL_PASS: getEnv("TARANTOOL_PASS", "passw0rd"),
-			TARANTOOL_USER: getEnv("TARANTOOL_USER", "storage"),
+			MATTERMOST_URL: getEnv("MATTERMOST_URL", ""),
+			BOT_TOKEN:      getEnv("BOT_TOKEN", ""),
+			TARANTOOL_ADDR: getEnv("TARANTOOL_ADDR", ""),
+			MATTERMOST_WS:  getEnv("MATTERMOST_WS", ""),
+			TARANTOOL_PASS: getEnv("TARANTOOL_PASS", ""),
+			TARANTOOL_USER: getEnv("TARANTOOL_USER", ""),
 		}
 	}
 	return config

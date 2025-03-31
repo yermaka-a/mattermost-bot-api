@@ -1,0 +1,17 @@
+services:
+  bot:
+    restart: always
+    build: "../bot"
+    environment:
+      MATTERMOST_WS: ${MATTERMOST_WS}
+      MATTERMOST_URL: ${MATTERMOST_URL}
+      BOT_TOKEN: ${BOT_TOKEN}
+      TARANTOOL_ADDR: ${TARANTOOL_ADDR}
+      TARANTOOL_USER: ${TARANTOOL_USER}
+      TARANTOOL_PASS: ${TARANTOOL_PASS}
+    networks:
+      - docker_mynetwork
+
+networks:
+  docker_mynetwork:
+    external: true

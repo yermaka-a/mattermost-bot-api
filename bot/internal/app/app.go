@@ -54,11 +54,10 @@ const (
 
 func Start(ctx context.Context, client *model.Client4, storage *storage.TarantoolStorage, cfg *config.BotConfig, log *logger.Logger) {
 
-	resp, err := storage.CreateDB()
+	_, err := storage.CreateDB()
 	if err != nil {
 		log.Fatalln("Can't create database", err)
 	}
-	log.Infoln(resp)
 	routes = MattermostRoutes{
 		me: "/users/me",
 	}

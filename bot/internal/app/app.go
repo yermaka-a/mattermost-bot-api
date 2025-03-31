@@ -45,6 +45,7 @@ type Bot struct {
 }
 
 const (
+	HELP        = "/bot_help"
 	CREATE_VOTE = "/create"
 	VOTE        = "/vote"
 	RESULTS     = "/results"
@@ -100,6 +101,9 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 							typeMsg, message := getCommand(msg.Message)
 							msg.Message = message
 							switch typeMsg {
+							case HELP:
+								app.Help(msg)
+
 							case CREATE_VOTE:
 								app.CreateVote(msg)
 
@@ -119,7 +123,7 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 						}
 					}
 				}
-				// Начало беседы с ботом в ЛС
+				// Начало беседы с ботом в ЛС для пользователей, кроме создателя (т.к. access token ещё неактивен)
 				if event.EventType() == model.WebsocketEventDirectAdded {
 					creatorId := event.GetData()["creator_id"].(string)
 					teammateId := event.GetData()["teammate_id"].(string)
@@ -131,7 +135,8 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 							}
 							client.CreatePost(&model.Post{
 								ChannelId: chl.Id,
-								Message: fmt.Sprintf("Добрый день я бот для создания опросов, вы можете взаимодействовать со мной следующим образом:\n%s\n%s\n%s\n%s\n%s",
+								Message: fmt.Sprintf("Добрый день я бот для создания опросов, вы можете взаимодействовать со мной следующим образом:\n%s\n%s\n%s\n%s\n%s\n%s",
+									"**"+HELP+" - Команда отправляет сообщение об описании функционала",
 									"**"+CREATE_VOTE+" \"Ваш вопрос\" \"Вариант 1\" \"Вариант 2\"** - пример как создать опрос",
 									"**"+VOTE+" ID_голосования вариант_ответа** - пример как проголосовать в опросе",
 									"**"+RESULTS+" Id_голосования** - пример как получить результаты",
@@ -166,7 +171,7 @@ func (a *App) getBotData(bot *Bot) {
 }
 
 func getCommand(message string) (string, string) {
-	commands := []string{CREATE_VOTE, VOTE, FINISHED, RESULTS, DELETE}
+	commands := []string{HELP, CREATE_VOTE, VOTE, FINISHED, RESULTS, DELETE}
 	// Создаем регулярное выражение для поиска команды в начале строки
 	commandPattern := "^(" + strings.Join(commands, "|") + ")"
 	re := regexp.MustCompile(commandPattern)
@@ -179,6 +184,19 @@ func getCommand(message string) (string, string) {
 		return match, remaining
 	}
 	return "", ""
+}
+
+func (a *App) Help(msg Message) {
+	a.client.CreatePost(&model.Post{
+		ChannelId: msg.ChannelId,
+		Message: fmt.Sprintf("Добрый день я бот для создания опросов, вы можете взаимодействовать со мной следующим образом:\n%s\n%s\n%s\n%s\n%s\n%s",
+			"**"+HELP+" - Команда отправляет сообщение об описании функционала",
+			"**"+CREATE_VOTE+" \"Ваш вопрос\" \"Вариант 1\" \"Вариант 2\"** - пример как создать опрос",
+			"**"+VOTE+" ID_голосования вариант_ответа** - пример как проголосовать в опросе",
+			"**"+RESULTS+" Id_голосования** - пример как получить результаты",
+			"**"+FINISHED+" Id_голосования** - пример как завершить опрос досрочно (Доступо только создателю опроса)",
+			"**"+DELETE+" Id_голосования** - пример как удалить опрос (Доступно только создателю опроса)",
+		)})
 }
 
 func (a *App) CreateVote(msg Message) {

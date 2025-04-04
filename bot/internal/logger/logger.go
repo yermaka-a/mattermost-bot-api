@@ -1,18 +1,14 @@
 package logger
 
 import (
+	"log/slog"
+
 	"go.uber.org/zap"
+	"go.uber.org/zap/exp/zapslog"
 )
 
-type Logger struct {
-	*zap.SugaredLogger
-}
+func SetupLogger(zap *zap.Logger) *slog.Logger {
 
-func NewLogger() (*Logger, error) {
-	config := zap.NewProductionConfig()
-	logger, err := config.Build()
-	if err != nil {
-		return nil, err
-	}
-	return &Logger{logger.Sugar()}, nil
+	logger := slog.New(zapslog.NewHandler(zap.Core()))
+	return logger
 }

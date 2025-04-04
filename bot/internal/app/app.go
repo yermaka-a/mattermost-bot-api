@@ -2,7 +2,6 @@ package app
 
 import (
 	"bot/internal/config"
-	"bot/internal/logger"
 	"bot/internal/models"
 	"bot/internal/storage"
 	"context"
@@ -10,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+
+	"log/slog"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,11 +21,18 @@ import (
 
 type App struct {
 	client  *model.Client4
-	storage *storage.TarantoolStorage
-	log     *logger.Logger
+	storage *storage.Storage
+	log     *slog.Logger
 }
 
-var app App
+type Bot struct {
+	ID       string `json:"id"`
+	Username string `json:"username"`
+}
+
+type MattermostRoutes struct {
+	me string
+}
 
 type Message struct {
 	Id        string `json:"id"`
@@ -33,39 +41,26 @@ type Message struct {
 	Message   string `json:"message"`
 }
 
-type MattermostRoutes struct {
-	me string
-}
-
+var app App
 var routes MattermostRoutes
 
-type Bot struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-}
-
 const (
-	HELP        = "/bot_help"
-	CREATE_VOTE = "/create"
-	VOTE        = "/vote"
-	RESULTS     = "/results"
-	FINISHED    = "/finished"
-	DELETE      = "/delete"
+	HELP        = "@bot_help"
+	CREATE_VOTE = "@create"
+	VOTE        = "@vote"
+	RESULTS     = "@results"
+	FINISHED    = "@finished"
+	DELETE      = "@delete"
 )
 
-func Start(ctx context.Context, client *model.Client4, storage *storage.TarantoolStorage, cfg *config.BotConfig, log *logger.Logger) {
-
-	_, err := storage.CreateDB()
-	if err != nil {
-		log.Fatalln("Can't create database", err)
-	}
+func Start(ctx context.Context, client *model.Client4, storage *storage.Storage, cfg *config.Config, logger *slog.Logger) {
 	routes = MattermostRoutes{
 		me: "/users/me",
 	}
 	app = App{
 		client,
 		storage,
-		log,
+		logger,
 	}
 	client.HTTPHeader = map[string]string{
 		"Authorization": "Bearer " + cfg.BOT_TOKEN,
@@ -76,7 +71,7 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 
 	wsClient, err := model.NewWebSocketClient4(cfg.MATTERMOST_WS, client.AuthToken)
 	if err != nil {
-		log.Fatalln("ws connection error", err)
+		logger.Error("ws connection", "error", err)
 	}
 	wsClient.Listen()
 	go func() {
@@ -131,7 +126,7 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Tarantoo
 						if teammateId == bot.ID {
 							chl, _, err := client.CreateDirectChannel(creatorId, teammateId)
 							if err != nil {
-								log.Errorln(err)
+								logger.Error("can't create direct channel", "error", err.Error())
 							}
 							client.CreatePost(&model.Post{
 								ChannelId: chl.Id,
@@ -215,7 +210,7 @@ func (a *App) CreateVote(msg Message) {
 
 		err := a.storage.CreateVote(voting)
 		if err != nil {
-			a.log.Errorln("Can't create a voting:", voting, "error", err)
+			a.log.Error("Can't create a voting:", "error", err.Error(), "voting", voting.LogValue())
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
 				Message:   "Упс! Произошла ошибка при создании голосования"})
@@ -292,7 +287,7 @@ func (a *App) ToVote(msg Message) {
 		if now.Before(time.Unix(voting.ExpiresAt, 0)) {
 			user, err := a.storage.GetUserById(msg.UserId)
 			if err != nil {
-				a.log.Errorln(err)
+				a.log.Error(err.Error())
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
 					Message:   "Что-то пошло не так..."})
@@ -338,7 +333,7 @@ func (a *App) ToVote(msg Message) {
 			}
 			err = a.storage.UpdateVote(voting)
 			if err != nil {
-				a.log.Errorln(err)
+				a.log.Error(err.Error())
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
 					Message:   "Что-то пошло не так..."})
@@ -361,7 +356,7 @@ func (a *App) ToVote(msg Message) {
 			}
 			err := a.storage.UpdateVote(voting)
 			if err != nil {
-				a.log.Errorln("func ToVote", "can't update vote", err)
+				a.log.Error("func ToVote", "can't update vote", err.Error())
 			}
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
@@ -419,7 +414,7 @@ func (a *App) GetVoteResults(msg Message) {
 	if isVoteId {
 		voting, err := a.storage.GetVote(msg.Message)
 		if err != nil {
-			a.log.Infoln("voting not found", err)
+			a.log.Info("voting not found", "error", err.Error())
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
 				Message:   "Такого голосования не нашлось."})
@@ -441,7 +436,7 @@ func (a *App) DeletingVote(msg Message) {
 	if isVoteId {
 		voting, err := a.storage.GetVote(msg.Message)
 		if err != nil {
-			a.log.Infoln("voting not found", err)
+			a.log.Info("voting not found", "error", err.Error())
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
 				Message:   "Такого голосования не нашлось."})
@@ -450,7 +445,7 @@ func (a *App) DeletingVote(msg Message) {
 		if voting.CreatorID == msg.UserId {
 			err := a.storage.DeleteVote(voting.ID)
 			if err != nil {
-				a.log.Errorln("can't delete voting", err)
+				a.log.Error("can't delete voting", "error", err.Error())
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
 					Message:   "При удалении произошла ошибка!"})
@@ -478,7 +473,7 @@ func (a *App) FinishingVote(msg Message) {
 	if isVoteId {
 		voting, err := a.storage.GetVote(msg.Message)
 		if err != nil {
-			a.log.Infoln("voting not found", err)
+			a.log.Info("voting not found", "error", err)
 			a.client.CreatePost(&model.Post{
 				ChannelId: msg.ChannelId,
 				Message:   "Такого голосования не нашлось."})
@@ -495,7 +490,7 @@ func (a *App) FinishingVote(msg Message) {
 			voting.IsActive = false
 			err := a.storage.UpdateVote(voting)
 			if err != nil {
-				a.log.Errorln("can't finished voting", err)
+				a.log.Error("can't finished voting", "error", err.Error())
 				a.client.CreatePost(&model.Post{
 					ChannelId: msg.ChannelId,
 					Message:   "Произошла ошибка!"})

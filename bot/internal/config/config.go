@@ -5,9 +5,9 @@ import (
 	"os"
 )
 
-var config *BotConfig
+var config *Config
 
-type BotConfig struct {
+type Config struct {
 	MATTERMOST_URL string
 	BOT_TOKEN      string
 	TARANTOOL_ADDR string
@@ -16,9 +16,9 @@ type BotConfig struct {
 	MATTERMOST_WS  string
 }
 
-func GetConfig() *BotConfig {
+func MustLoad() *Config {
 	if config == nil {
-		config = &BotConfig{
+		config = &Config{
 			MATTERMOST_URL: getEnv("MATTERMOST_URL", ""),
 			BOT_TOKEN:      getEnv("BOT_TOKEN", ""),
 			TARANTOOL_ADDR: getEnv("TARANTOOL_ADDR", ""),

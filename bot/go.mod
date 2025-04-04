@@ -50,4 +50,5 @@ require (
 	github.com/tarantool/go-tarantool/v2 v2.3.0
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0
+	go.uber.org/zap/exp v0.3.0
 )

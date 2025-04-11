@@ -97,22 +97,22 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Storage,
 							msg.Message = message
 							switch typeMsg {
 							case HELP:
-								app.Help(msg)
+								go app.Help(msg)
 
 							case CREATE_VOTE:
-								app.CreateVote(msg)
+								go app.CreateVote(msg)
 
 							case VOTE:
-								app.ToVote(msg)
+								go app.ToVote(msg)
 
 							case RESULTS:
-								app.GetVoteResults(msg)
+								go app.GetVoteResults(msg)
 
 							case FINISHED:
-								app.FinishingVote(msg)
+								go app.FinishingVote(msg)
 
 							case DELETE:
-								app.DeletingVote(msg)
+								go app.DeletingVote(msg)
 
 							}
 						}
@@ -143,6 +143,7 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Storage,
 					}
 				}
 			case <-ctx.Done():
+				wsClient.Close()
 				break LOOP
 			}
 		}

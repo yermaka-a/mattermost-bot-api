@@ -53,6 +53,15 @@ const (
 	DELETE      = "@delete"
 )
 
+var HELP_MESSAGE = fmt.Sprintf("Добрый день я бот для создания опросов, вы можете взаимодействовать со мной следующим образом:\n%s\n%s\n%s\n%s\n%s\n%s",
+	"**"+HELP+" - Команда отправляет сообщение об описании функционала",
+	"**"+CREATE_VOTE+" \"Ваш вопрос\" \"Вариант 1\" \"Вариант 2\"** - пример как создать опрос",
+	"**"+VOTE+" ID_голосования вариант_ответа** - пример как проголосовать в опросе",
+	"**"+RESULTS+" Id_голосования** - пример как получить результаты",
+	"**"+FINISHED+" Id_голосования** - пример как завершить опрос досрочно (Доступо только создателю опроса)",
+	"**"+DELETE+" Id_голосования** - пример как удалить опрос (Доступно только создателю опроса)",
+)
+
 func Start(ctx context.Context, client *model.Client4, storage *storage.Storage, cfg *config.Config, logger *slog.Logger) {
 	routes = MattermostRoutes{
 		me: "/users/me",
@@ -120,27 +129,8 @@ func Start(ctx context.Context, client *model.Client4, storage *storage.Storage,
 				}
 				// Начало беседы с ботом в ЛС для пользователей, кроме создателя (т.к. access token ещё неактивен)
 				if event.EventType() == model.WebsocketEventDirectAdded {
-					creatorId := event.GetData()["creator_id"].(string)
-					teammateId := event.GetData()["teammate_id"].(string)
-					if creatorId != "" && teammateId != "" {
-						if teammateId == bot.ID {
-							chl, _, err := client.CreateDirectChannel(creatorId, teammateId)
-							if err != nil {
-								logger.Error("can't create direct channel", "error", err.Error())
-							}
-							client.CreatePost(&model.Post{
-								ChannelId: chl.Id,
-								Message: fmt.Sprintf("Добрый день я бот для создания опросов, вы можете взаимодействовать со мной следующим образом:\n%s\n%s\n%s\n%s\n%s\n%s",
-									"**"+HELP+" - Команда отправляет сообщение об описании функционала",
-									"**"+CREATE_VOTE+" \"Ваш вопрос\" \"Вариант 1\" \"Вариант 2\"** - пример как создать опрос",
-									"**"+VOTE+" ID_голосования вариант_ответа** - пример как проголосовать в опросе",
-									"**"+RESULTS+" Id_голосования** - пример как получить результаты",
-									"**"+FINISHED+" Id_голосования** - пример как завершить опрос досрочно (Доступо только создателю опроса)",
-									"**"+DELETE+" Id_голосования** - пример как удалить опрос (Доступно только создателю опроса)",
-								)})
-						}
+					go app.GreetingHelp(event.GetData(), &bot)
 
-					}
 				}
 			case <-ctx.Done():
 				wsClient.Close()
@@ -185,14 +175,7 @@ func getCommand(message string) (string, string) {
 func (a *App) Help(msg Message) {
 	a.client.CreatePost(&model.Post{
 		ChannelId: msg.ChannelId,
-		Message: fmt.Sprintf("Добрый день я бот для создания опросов, вы можете взаимодействовать со мной следующим образом:\n%s\n%s\n%s\n%s\n%s\n%s",
-			"**"+HELP+" - Команда отправляет сообщение об описании функционала",
-			"**"+CREATE_VOTE+" \"Ваш вопрос\" \"Вариант 1\" \"Вариант 2\"** - пример как создать опрос",
-			"**"+VOTE+" ID_голосования вариант_ответа** - пример как проголосовать в опросе",
-			"**"+RESULTS+" Id_голосования** - пример как получить результаты",
-			"**"+FINISHED+" Id_голосования** - пример как завершить опрос досрочно (Доступо только создателю опроса)",
-			"**"+DELETE+" Id_голосования** - пример как удалить опрос (Доступно только создателю опроса)",
-		)})
+		Message:   HELP_MESSAGE})
 }
 
 func (a *App) CreateVote(msg Message) {
@@ -510,5 +493,21 @@ func (a *App) FinishingVote(msg Message) {
 		a.client.CreatePost(&model.Post{
 			ChannelId: msg.ChannelId,
 			Message:   "Некорректный ID"})
+	}
+}
+
+func (a *App) GreetingHelp(data map[string]interface{}, bot *Bot) {
+	creatorId := data["creator_id"].(string)
+	teammateId := data["teammate_id"].(string)
+	if creatorId != "" && teammateId != "" {
+		if teammateId == bot.ID {
+			chl, _, err := a.client.CreateDirectChannel(creatorId, teammateId)
+			if err != nil {
+				a.log.Error("can't create direct channel", "error", err.Error())
+			}
+			a.client.CreatePost(&model.Post{
+				ChannelId: chl.Id,
+				Message:   HELP_MESSAGE})
+		}
 	}
 }

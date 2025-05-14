@@ -2,6 +2,8 @@ module bot
 
 go 1.24.1
 
+require github.com/stretchr/testify v1.10.0 // indirect
+
 require (
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect

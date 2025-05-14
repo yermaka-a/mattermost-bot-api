@@ -285,7 +285,7 @@ func (b *botAPI) toVote(msg models.Message) {
 			}
 			// проголосовал ли пользователь уже в этом опросе
 			isVoted := false
-			b.log.Info("info", "votes", user.Votes)
+
 			if user.Votes[parts[0]] != 0 {
 				votes[user.Votes[parts[0]]-1] = votes[user.Votes[parts[0]]-1] - 1
 				isVoted = true

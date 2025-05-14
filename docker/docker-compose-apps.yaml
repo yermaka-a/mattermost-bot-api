@@ -31,7 +31,8 @@ services:
     networks:
       - mynetwork
   tarantool:
-    image: tarantool/tarantool:2.8
+    build:
+      "./tarantool"
     ports:
       - "3301:3301"
     environment:

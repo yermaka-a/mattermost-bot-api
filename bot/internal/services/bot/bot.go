@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mattermost/mattermost-server/v6/model"
@@ -30,6 +31,7 @@ type BotService interface {
 }
 
 type botService struct {
+	mx      *sync.RWMutex
 	log     *slog.Logger
 	storage storage.VoteStorage
 }
@@ -42,6 +44,8 @@ func New(log *slog.Logger, storage storage.VoteStorage) BotService {
 }
 
 func (b *botService) CreateVote(msg *models.Message) (*models.Voting, error) {
+	b.mx.RLock()
+	defer b.mx.RUnlock()
 	op := "bot.CreateVote"
 	question, options := parseQuestionAndOptions(msg.Message)
 	if question != "" && options != nil {
@@ -115,7 +119,8 @@ func (b *botService) GetUserById(userID string) (*models.User, error) {
 }
 
 func (b *botService) CreateUser(userID string) *models.User {
-
+	b.mx.RLock()
+	defer b.mx.RUnlock()
 	user := &models.User{
 		UserId: userID,
 		Votes:  map[string]int64{},
@@ -141,11 +146,15 @@ func (b *botService) UpdateVoteLocaly(votes []int64, vote string) ([]int64, erro
 }
 
 func (b *botService) UpdateUser(user *models.User) error {
+	b.mx.RLock()
+	defer b.mx.RUnlock()
 	err := b.storage.UpdateUser(user)
 	return err
 }
 
 func (b *botService) UpdateVote(voting *models.Voting) error {
+	b.mx.RLock()
+	defer b.mx.RUnlock()
 	err := b.storage.UpdateVote(voting)
 	return err
 }
@@ -156,6 +165,8 @@ func (b *botService) GetVote(msg string) (*models.Voting, error) {
 }
 
 func (b *botService) DeleteVote(id string) error {
+	b.mx.RLock()
+	defer b.mx.RUnlock()
 	err := b.storage.DeleteVote(id)
 	return err
 }
